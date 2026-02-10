@@ -218,7 +218,7 @@ class Main(App):
         fw2stack_gap_pages = fw2stack_gap / self.FLASH_PAGE_SIZE
         if fw2stack_gap_pages < 0:
             self.logger.warning(
-                f"Firmware image overlaps C2 region and is not programmable!"
+                f"Firmware image overlaps C2 region and is not programmable! (gap: {fw2stack_gap} bytes)"
             )
             return False
 

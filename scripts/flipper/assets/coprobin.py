@@ -70,6 +70,7 @@ class CoproFooterBase:
 
 class CoproFusFooter(CoproFooterBase):
     FUS_MAGIC_IMG_STACK = 0x23372991
+    FUS_MAGIC_IMG_STACK2 = 0xB10C8B99
     FUS_MAGIC_IMG_FUS = 0x32279221
     FUS_MAGIC_IMG_OTHER = 0x42769811
 
@@ -82,6 +83,7 @@ class CoproFusFooter(CoproFooterBase):
             self.FUS_MAGIC_IMG_OTHER,
             self.FUS_MAGIC_IMG_FUS,
             self.FUS_MAGIC_IMG_STACK,
+            self.FUS_MAGIC_IMG_STACK2,
         ):
             raise CoproException(f"Invalid FUS img magic {self.magic:x}")
         own_data = raw[: -self._SIG_BIN_COMMON_SIZE]
@@ -90,17 +92,21 @@ class CoproFusFooter(CoproFooterBase):
         self.info2 = parts[1]
         self.sram2b_1ks = parts[5]
         self.sram2a_1ks = parts[4]
+        self.footer_type = parts[3]
+        self.nvm_size = 0
+        if self.footer_type == 0x02:
+            self.nvm_size = (self.info1 >> 8) & 255
         self.flash_4ks = parts[2]
 
     def get_details(self):
         return f"SRAM2b={self.sram2b_1ks}k SRAM2a={self.sram2a_1ks}k flash={self.flash_4ks}p"
 
     def is_stack(self):
-        return self.magic == self.FUS_MAGIC_IMG_STACK
+        return self.magic == self.FUS_MAGIC_IMG_STACK or self.magic == self.FUS_MAGIC_IMG_STACK2
 
     def get_flash_pages(self, fullsize):
-        return math.ceil(fullsize / self.FLASH_PAGE_SIZE)
-
+        return math.ceil(fullsize / self.FLASH_PAGE_SIZE) + self.nvm_size
+ 
     def get_flash_base(self, fullsize):
         if not self.is_stack():
             raise CoproException("Not a stack image")
