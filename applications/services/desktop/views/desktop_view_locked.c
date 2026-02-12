@@ -35,14 +35,12 @@ struct DesktopViewLocked {
 typedef enum {
     DesktopViewLockedStateUnlocked,
     DesktopViewLockedStateLocked,
-    DesktopViewLockedStateDoorsClosing,
     DesktopViewLockedStateLockedHintShown,
     DesktopViewLockedStateUnlockedHintShown
 } DesktopViewLockedState;
 
 typedef struct {
     bool pin_locked;
-    int8_t door_offset;
     DesktopViewLockedState view_state;
 } DesktopViewLockedModel;
 
@@ -61,25 +59,6 @@ static void locked_view_timer_callback(void* context) {
     locked_view->callback(DesktopLockedEventUpdate, locked_view->context);
 }
 
-static void desktop_view_locked_doors_draw(Canvas* canvas, DesktopViewLockedModel* model) {
-    int32_t offset = model->door_offset;
-    int32_t door_left_x = DOOR_L_FINAL_POS + offset;
-    int32_t door_right_x = DOOR_R_FINAL_POS - offset;
-    size_t height = icon_get_height(&I_DoorLeft_70x55);
-    canvas_draw_icon(canvas, door_left_x, canvas_height(canvas) - height, &I_DoorLeft_70x55);
-    canvas_draw_icon(canvas, door_right_x, canvas_height(canvas) - height, &I_DoorRight_70x55);
-}
-
-static bool desktop_view_locked_doors_move(DesktopViewLockedModel* model) {
-    bool stop = false;
-    if(model->door_offset < DOOR_OFFSET_END) {
-        model->door_offset = CLAMP(model->door_offset + 5, DOOR_OFFSET_END, DOOR_OFFSET_START);
-        stop = true;
-    }
-
-    return stop;
-}
-
 static void desktop_view_locked_update_hint_icon_timeout(DesktopViewLocked* locked_view) {
     DesktopViewLockedModel* model = view_get_model(locked_view->view);
     const bool change_state = (model->view_state == DesktopViewLockedStateLocked) &&
@@ -95,11 +74,7 @@ void desktop_view_locked_update(DesktopViewLocked* locked_view) {
     DesktopViewLockedModel* model = view_get_model(locked_view->view);
     DesktopViewLockedState view_state = model->view_state;
 
-    if(view_state == DesktopViewLockedStateDoorsClosing &&
-       !desktop_view_locked_doors_move(model)) {
-        locked_view->callback(DesktopLockedEventDoorsClosed, locked_view->context);
-        model->view_state = DesktopViewLockedStateLocked;
-    } else if(view_state == DesktopViewLockedStateLockedHintShown) {
+    if(view_state == DesktopViewLockedStateLockedHintShown) {
         model->view_state = DesktopViewLockedStateLocked;
     } else if(view_state == DesktopViewLockedStateUnlockedHintShown) {
         model->view_state = DesktopViewLockedStateUnlocked;
@@ -107,9 +82,7 @@ void desktop_view_locked_update(DesktopViewLocked* locked_view) {
 
     view_commit_model(locked_view->view, true);
 
-    if(view_state != DesktopViewLockedStateDoorsClosing) {
-        furi_timer_stop(locked_view->timer);
-    }
+    furi_timer_stop(locked_view->timer);
 }
 
 static void desktop_view_locked_draw(Canvas* canvas, void* model) {
@@ -117,11 +90,7 @@ static void desktop_view_locked_draw(Canvas* canvas, void* model) {
     DesktopViewLockedState view_state = m->view_state;
     canvas_set_color(canvas, ColorBlack);
 
-    if(view_state == DesktopViewLockedStateDoorsClosing) {
-        desktop_view_locked_doors_draw(canvas, m);
-        canvas_set_font(canvas, FontPrimary);
-        elements_multiline_text_framed(canvas, 42, 30 + STATUS_BAR_Y_SHIFT, "Locked");
-    } else if(view_state == DesktopViewLockedStateLockedHintShown) {
+    if(view_state == DesktopViewLockedStateLockedHintShown) {
         canvas_set_font(canvas, FontSecondary);
         elements_bold_rounded_frame(canvas, 14, 2 + STATUS_BAR_Y_SHIFT, 99, 48);
         elements_multiline_text(canvas, 65, 20 + STATUS_BAR_Y_SHIFT, "To unlock\npress:");
@@ -209,15 +178,6 @@ void desktop_view_locked_free(DesktopViewLocked* locked_view) {
     furi_timer_free(locked_view->timer);
     view_free(locked_view->view);
     free(locked_view);
-}
-
-void desktop_view_locked_close_doors(DesktopViewLocked* locked_view) {
-    DesktopViewLockedModel* model = view_get_model(locked_view->view);
-    furi_assert(model->view_state == DesktopViewLockedStateLocked);
-    model->view_state = DesktopViewLockedStateDoorsClosing;
-    model->door_offset = DOOR_OFFSET_START;
-    view_commit_model(locked_view->view, true);
-    furi_timer_start(locked_view->timer, DOOR_MOVING_INTERVAL_MS);
 }
 
 void desktop_view_locked_lock(DesktopViewLocked* locked_view, bool pin_locked) {

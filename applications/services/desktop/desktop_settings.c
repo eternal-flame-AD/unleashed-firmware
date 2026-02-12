@@ -7,7 +7,7 @@
 #define TAG "DesktopSettings"
 
 #define DESKTOP_SETTINGS_VER_14 (14)
-#define DESKTOP_SETTINGS_VER    (17)
+#define DESKTOP_SETTINGS_VER    (18)
 
 #define DESKTOP_SETTINGS_PATH  INT_PATH(DESKTOP_SETTINGS_FILE_NAME)
 #define DESKTOP_SETTINGS_MAGIC (0x17)
@@ -55,14 +55,10 @@ void desktop_settings_load(DesktopSettings* settings) {
                 settings->auto_lock_delay_ms = settings_v14->auto_lock_delay_ms;
                 settings->usb_inhibit_auto_lock = 0;
                 settings->displayBatteryPercentage = settings_v14->displayBatteryPercentage;
-                settings->dummy_mode = settings_v14->dummy_mode;
-                settings->display_clock = settings_v14->display_clock;
                 memcpy(
                     settings->favorite_apps,
                     settings_v14->favorite_apps,
                     sizeof(settings->favorite_apps));
-                memcpy(
-                    settings->dummy_apps, settings_v14->dummy_apps, sizeof(settings->dummy_apps));
             }
 
             free(settings_v14);

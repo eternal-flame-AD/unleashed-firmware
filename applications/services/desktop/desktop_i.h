@@ -3,7 +3,7 @@
 #include "desktop.h"
 #include "desktop_settings.h"
 
-#include "animations/animation_manager.h"
+#include <locale/locale.h>
 #include "views/desktop_view_pin_timeout.h"
 #include "views/desktop_view_pin_input.h"
 #include "views/desktop_view_locked.h"
@@ -36,9 +36,9 @@ typedef enum {
 } DesktopViewId;
 
 typedef struct {
-    uint8_t hour;
-    uint8_t minute;
-    bool format_12; // 1 - 12 hour, 0 - 24H
+    DateTime datetime;
+    LocaleTimeFormat time_format;
+    LocaleDateFormat date_format;
 } DesktopClock;
 
 struct Desktop {
@@ -57,12 +57,12 @@ struct Desktop {
     DesktopSlideshowView* slideshow_view;
     DesktopViewPinInput* pin_input_view;
 
+    View* clock_view;
     ViewStack* main_view_stack;
     ViewStack* locked_view_stack;
 
     ViewPort* lock_icon_viewport;
     ViewPort* dummy_mode_icon_viewport;
-    ViewPort* clock_viewport;
     ViewPort* stealth_mode_icon_viewport;
 
     Loader* loader;
@@ -76,10 +76,6 @@ struct Desktop {
     FuriTimer* auto_lock_timer;
     FuriTimer* update_clock_timer;
 
-    AnimationManager* animation_manager;
-    FuriSemaphore* animation_semaphore;
-
-    DesktopClock clock;
     DesktopSettings settings;
 
     bool in_transition;

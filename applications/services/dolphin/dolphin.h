@@ -18,7 +18,6 @@ typedef struct {
     uint32_t butthurt;
     uint64_t timestamp;
     uint8_t level;
-    bool level_up_is_pending;
 } DolphinStats;
 
 typedef struct {

@@ -7,7 +7,6 @@
 #include "../desktop.h"
 #include "../desktop_i.h"
 #include "../helpers/pin_code.h"
-#include "../animations/animation_manager.h"
 #include "../views/desktop_events.h"
 #include "../views/desktop_view_locked.h"
 #include "desktop_scene.h"
@@ -21,21 +20,8 @@ static void desktop_scene_locked_callback(DesktopEvent event, void* context) {
     view_dispatcher_send_custom_event(desktop->view_dispatcher, event);
 }
 
-static void desktop_scene_locked_new_idle_animation_callback(void* context) {
-    furi_assert(context);
-    Desktop* desktop = context;
-    view_dispatcher_send_custom_event(
-        desktop->view_dispatcher, DesktopAnimationEventNewIdleAnimation);
-}
-
 void desktop_scene_locked_on_enter(void* context) {
     Desktop* desktop = (Desktop*)context;
-
-    // callbacks for 1-st layer
-    animation_manager_set_new_idle_callback(
-        desktop->animation_manager, desktop_scene_locked_new_idle_animation_callback);
-    animation_manager_set_check_callback(desktop->animation_manager, NULL);
-    animation_manager_set_interact_callback(desktop->animation_manager, NULL);
 
     // callbacks for 2-nd layer
     desktop_view_locked_set_callback(desktop->locked_view, desktop_scene_locked_callback, desktop);
@@ -55,13 +41,12 @@ void desktop_scene_locked_on_enter(void* context) {
                 scene_manager_set_scene_state(
                     desktop->scene_manager, DesktopScenePinTimeout, pin_timeout);
                 switch_to_timeout_scene = true;
-            } else {
-                desktop_view_locked_close_doors(desktop->locked_view);
             }
         } else {
             desktop_view_locked_lock(desktop->locked_view, false);
-            desktop_view_locked_close_doors(desktop->locked_view);
         }
+        notification_message(desktop->notification, &sequence_display_backlight_off);
+
         scene_manager_set_scene_state(
             desktop->scene_manager, DesktopSceneLocked, DesktopSceneLockedStateRepeatEnter);
     }
@@ -84,10 +69,6 @@ bool desktop_scene_locked_on_event(void* context, SceneManagerEvent event) {
             desktop_unlock(desktop);
             consumed = true;
             break;
-        case DesktopLockedEventDoorsClosed:
-            notification_message(desktop->notification, &sequence_display_backlight_off);
-            consumed = true;
-            break;
         case DesktopLockedEventUpdate:
             if(desktop_view_locked_is_locked_hint_visible(desktop->locked_view)) {
                 notification_message(desktop->notification, &sequence_display_backlight_off);
@@ -97,10 +78,6 @@ bool desktop_scene_locked_on_event(void* context, SceneManagerEvent event) {
             break;
         case DesktopLockedEventShowPinInput:
             scene_manager_next_scene(desktop->scene_manager, DesktopScenePinInput);
-            consumed = true;
-            break;
-        case DesktopAnimationEventNewIdleAnimation:
-            animation_manager_new_idle_process(desktop->animation_manager);
             consumed = true;
             break;
         }

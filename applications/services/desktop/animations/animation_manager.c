@@ -18,11 +18,10 @@
 #define NO_SD_ANIMATION_NAME       "L1_NoSd_128x49"
 #define BAD_BATTERY_ANIMATION_NAME "L1_BadBattery_128x47"
 
-#define NO_DB_ANIMATION_NAME    "L0_NoDb_128x51"
-#define BAD_SD_ANIMATION_NAME   "L0_SdBad_128x51"
-#define SD_OK_ANIMATION_NAME    "L0_SdOk_128x51"
-#define URL_ANIMATION_NAME      "L0_Url_128x51"
-#define NEW_MAIL_ANIMATION_NAME "L0_NewMail_128x51"
+#define NO_DB_ANIMATION_NAME  "L0_NoDb_128x51"
+#define BAD_SD_ANIMATION_NAME "L0_SdBad_128x51"
+#define SD_OK_ANIMATION_NAME  "L0_SdOk_128x51"
+#define URL_ANIMATION_NAME    "L0_Url_128x51"
 
 typedef enum {
     AnimationManagerStateIdle,
@@ -246,14 +245,6 @@ static bool animation_manager_check_blocking(AnimationManager* animation_manager
             furi_assert(blocking_animation);
             animation_manager->blocking_shown_url = false;
         }
-    }
-
-    Dolphin* dolphin = furi_record_open(RECORD_DOLPHIN);
-    DolphinStats stats = dolphin_stats(dolphin);
-    furi_record_close(RECORD_DOLPHIN);
-    if(!blocking_animation && stats.level_up_is_pending) {
-        blocking_animation = animation_storage_find_animation(NEW_MAIL_ANIMATION_NAME);
-        furi_check(blocking_animation);
     }
 
     if(blocking_animation) {
