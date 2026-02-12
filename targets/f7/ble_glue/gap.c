@@ -1,6 +1,7 @@
 #include "gap.h"
 
 #include "app_common.h"
+#include <interface/patterns/ble_thread/shci/shci.h>
 #include <core/mutex.h>
 #include "furi_ble/event_dispatcher.h"
 #include <ble/ble.h>
@@ -359,7 +360,8 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     // Skip first symbol AD_TYPE_COMPLETE_LOCAL_NAME
     char* name = gap->service.adv_name + 1;
     aci_gap_init(
-        GAP_PERIPHERAL_ROLE,
+        GAP_PERIPHERAL_ROLE |
+            (ble_glue_get_c2_info()->StackType == INFO_STACK_TYPE_BLE_FULL ? GAP_CENTRAL_ROLE : 0),
         0,
         strlen(name),
         &gap->service.gap_svc_handle,
