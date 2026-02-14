@@ -1,5 +1,7 @@
 #include "desktop_i.h"
 
+#include <inttypes.h>
+
 #include <cli/cli_vcp.h>
 
 #include <gui/gui_i.h>
@@ -25,6 +27,7 @@
 #define TIME_LEN     12
 #define DATE_LEN     14
 #define MERIDIAN_LEN 3
+#define BATTERY_LEN  22
 
 static void desktop_auto_lock_arm(Desktop*);
 static void desktop_auto_lock_inhibit(Desktop*);
@@ -86,6 +89,7 @@ static void desktop_clock_draw_callback(Canvas* canvas, void* model) {
     char time_string[TIME_LEN];
     char date_string[DATE_LEN];
     char meridian_string[MERIDIAN_LEN];
+    char battery_string[BATTERY_LEN];
 
     if(clock->time_format == LocaleTimeFormat24h) {
         snprintf(
@@ -140,11 +144,20 @@ static void desktop_clock_draw_callback(Canvas* canvas, void* model) {
             clock->datetime.year);
     }
 
+    snprintf(
+        battery_string,
+        BATTERY_LEN,
+        "%" PRIu8 "%% (%" PRIu8 " C, %" PRIi16 " mA)",
+        furi_hal_power_get_pct(),
+        (uint8_t)furi_hal_power_get_battery_temperature(FuriHalPowerICFuelGauge),
+        (int16_t)(furi_hal_power_get_battery_current(FuriHalPowerICFuelGauge) * 1000.f));
+
     canvas_set_font(canvas, FontBigNumbers);
 
     canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignCenter, time_string);
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(canvas, 64, 42, AlignCenter, AlignTop, date_string);
+    canvas_draw_str_aligned(canvas, 64, 52, AlignCenter, AlignTop, battery_string);
 
     if(clock->time_format == LocaleTimeFormat12h)
         canvas_draw_str_aligned(canvas, 65, 12, AlignCenter, AlignCenter, meridian_string);
