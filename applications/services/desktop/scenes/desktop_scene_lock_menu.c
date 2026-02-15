@@ -48,24 +48,14 @@ bool desktop_scene_lock_menu_on_event(void* context, SceneManagerEvent event) {
     } else if(event.type == SceneManagerEventTypeCustom) {
         switch(event.event) {
         // old use case
-        // case DesktopLockMenuEventLock:
-        //     scene_manager_set_scene_state(desktop->scene_manager, DesktopSceneLockMenu, 0);
-        //     desktop_lock(desktop);
-        //     consumed = true;
-        //     break;
+        case DesktopLockMenuEventLock:
+            scene_manager_set_scene_state(desktop->scene_manager, DesktopSceneLockMenu, 0);
+            desktop_lock(desktop);
+            consumed = true;
+            break;
         case DesktopLockMenuEventBt:
             bts.enabled = !bts.enabled;
             bt_set_settings(bt, &bts);
-            scene_manager_search_and_switch_to_previous_scene(
-                desktop->scene_manager, DesktopSceneMain);
-            break;
-        case DesktopLockMenuEventDummyModeOn:
-            // desktop_set_dummy_mode_state(desktop, true);
-            scene_manager_search_and_switch_to_previous_scene(
-                desktop->scene_manager, DesktopSceneMain);
-            break;
-        case DesktopLockMenuEventDummyModeOff:
-            // desktop_set_dummy_mode_state(desktop, false);
             scene_manager_search_and_switch_to_previous_scene(
                 desktop->scene_manager, DesktopSceneMain);
             break;
