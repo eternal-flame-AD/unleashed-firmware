@@ -129,6 +129,24 @@ void furi_hal_bt_update_power_state(bool charging);
  */
 bool furi_hal_bt_is_active(void);
 
+/** Check if BLE is scanning
+ *
+ * @return          true if scanning, false otherwise
+ */
+bool furi_hal_bt_is_scanning(void);
+
+/** Start scanning, will only work on foll radio stack
+ *
+ * @param callback    Callback function
+ * @param context     Context
+ * @param active      Active scanning
+ */
+void furi_hal_bt_start_scanning(BleScanEventCallback callback, void* context, bool active);
+
+/** Stop scanning
+ */
+void furi_hal_bt_stop_scanning(void);
+
 /** Start advertising
  */
 void furi_hal_bt_start_advertising(void);

@@ -1,3 +1,4 @@
+#include "hex.h"
 #include <furi.h>
 #include <furi_hal.h>
 #include <lib/toolbox/args.h>
@@ -19,6 +20,132 @@ static void bt_cli_command_hci_info(PipeSide* pipe, FuriString* args, void* cont
     furi_hal_bt_dump_state(buffer);
     printf("%s", furi_string_get_cstr(buffer));
     furi_string_free(buffer);
+}
+
+static void bt_cli_command_scan_callback(
+    uint8_t event_type,
+    uint8_t address_type,
+    uint8_t mac_address[6],
+    int8_t rssi,
+    uint8_t size,
+    const uint8_t* data,
+    void* context) {
+    PipeSide* pipe = context;
+
+    char buf[256];
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Scan callback: event_type = %d, address_type = %d, mac_address = %02X:%02X:%02X:%02X:%02X:%02X, rssi = %d, size = %d\r\n",
+        event_type,
+        address_type,
+        mac_address[5],
+        mac_address[4],
+        mac_address[3],
+        mac_address[2],
+        mac_address[1],
+        mac_address[0],
+        rssi,
+        size);
+    pipe_send(pipe, buf, strlen(buf));
+
+    uint8_t cursor = 0;
+    while(cursor + 1 < size) {
+        uint8_t chunk_size = data[cursor];
+        if(chunk_size == 0) {
+            break;
+        }
+        uint8_t tag = data[cursor + 1];
+        const uint8_t* chunk_data = data + cursor + 2;
+        chunk_size--;
+        if(chunk_data + chunk_size > data + size) {
+            pipe_send(pipe, " {BufferOverRun}\r\n", 18);
+            break;
+        }
+        switch(tag) {
+        case 0x01:
+            if(chunk_size > 0) {
+                pipe_send(pipe, "  Flags:", 7);
+                uint8_t flags = chunk_data[0];
+                if(flags & 1) {
+                    pipe_send(pipe, " LimitedDisc", 12);
+                }
+                if(flags & 2) {
+                    pipe_send(pipe, " GenrealDisc", 12);
+                }
+                if(flags & 4) {
+                    pipe_send(pipe, " NBL/EDR", 8);
+                }
+                if(flags & 8) {
+                    pipe_send(pipe, " EDR(Cl)", 8);
+                }
+                pipe_send(pipe, "\r\n", 2);
+            }
+            break;
+        case 0x02:
+        case 0x03:
+        case 0x04:
+        case 0x05:
+        case 0x06:
+        case 0x07:
+            snprintf(buf, sizeof(buf), "  Service UUID: ");
+            pipe_send(pipe, buf, strlen(buf));
+            uint8_to_hex_chars(chunk_data, (uint8_t*)buf, chunk_size * 2);
+            pipe_send(pipe, buf, chunk_size * 2);
+            pipe_send(pipe, "\r\n", 2);
+            break;
+        case 0x16:
+        case 0x20:
+        case 0x21:
+            snprintf(buf, sizeof(buf), "  Service Data: ");
+            pipe_send(pipe, buf, strlen(buf));
+            uint8_to_hex_chars(chunk_data, (uint8_t*)buf, chunk_size * 2);
+            pipe_send(pipe, buf, chunk_size * 2);
+            pipe_send(pipe, "\r\n", 2);
+            break;
+        case 0x08:
+        case 0x09:
+            if(tag == 0x08) {
+                pipe_send(pipe, "  Shortened Local Name: ", 24);
+            } else {
+                pipe_send(pipe, "  Complete Local Name: ", 23);
+            }
+            pipe_send(pipe, buf, strlen(buf));
+            pipe_send(pipe, chunk_data, chunk_size);
+            pipe_send(pipe, "\r\n", 2);
+            break;
+        default:
+            snprintf(buf, sizeof(buf), "  ADV[%02X]: {", tag);
+            pipe_send(pipe, buf, strlen(buf));
+            uint8_to_hex_chars(chunk_data, (uint8_t*)buf, chunk_size * 2);
+            pipe_send(pipe, buf, chunk_size * 2);
+            pipe_send(pipe, "}\r\n", 3);
+            break;
+        }
+        cursor += chunk_size + 2;
+    }
+    pipe_send(pipe, "\r\n", 2);
+}
+
+static void bt_cli_command_scan(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
+    UNUSED(args);
+    UNUSED(context);
+
+    int scan_type = 1;
+    if(!args_read_int_and_trim(args, &scan_type) && (scan_type < 0 || scan_type > 1)) {
+        printf("Incorrect or missing scan type, expected int 0-1");
+        return;
+    }
+    furi_hal_bt_stop_scanning();
+    furi_hal_bt_start_scanning(bt_cli_command_scan_callback, pipe, scan_type & 1);
+    while(furi_hal_bt_is_scanning()) {
+        if(cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
+            break;
+        }
+        furi_delay_ms(100);
+    }
+    furi_hal_bt_stop_scanning();
 }
 
 static void bt_cli_command_carrier_tx(PipeSide* pipe, FuriString* args, void* context) {
@@ -172,6 +299,7 @@ static void bt_cli_print_usage(void) {
     printf("bt <cmd> <args>\r\n");
     printf("Cmd list:\r\n");
     printf("\thci_info\t - HCI info\r\n");
+    printf("\tscan\t - start scanning\r\n");
     if(furi_hal_rtc_is_flag_set(FuriHalRtcFlagDebug) && furi_hal_bt_is_testing_supported()) {
         printf("\ttx_carrier <channel:0-39> <power:0-6>\t - start tx carrier test\r\n");
         printf("\trx_carrier <channel:0-39>\t - start rx carrier test\r\n");
@@ -197,6 +325,10 @@ static void bt_cli(PipeSide* pipe, FuriString* args, void* context) {
         }
         if(furi_string_cmp_str(cmd, "hci_info") == 0) {
             bt_cli_command_hci_info(pipe, args, NULL);
+            break;
+        }
+        if(furi_string_cmp_str(cmd, "scan") == 0) {
+            bt_cli_command_scan(pipe, args, NULL);
             break;
         }
         if(furi_hal_rtc_is_flag_set(FuriHalRtcFlagDebug) && furi_hal_bt_is_testing_supported()) {

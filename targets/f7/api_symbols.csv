@@ -1,5 +1,5 @@
 entry,status,name,type,params
-Version,+,87.6,,
+Version,+,87.7,,
 Header,+,applications/drivers/subghz/cc1101_ext/cc1101_ext_interconnect.h,,
 Header,+,applications/services/applications.h,,
 Header,+,applications/services/bt/bt_service/bt.h,,
@@ -1404,6 +1404,7 @@ Function,-,furi_hal_bt_init,void,
 Function,+,furi_hal_bt_is_active,_Bool,
 Function,+,furi_hal_bt_is_alive,_Bool,
 Function,+,furi_hal_bt_is_gatt_gap_supported,_Bool,
+Function,+,furi_hal_bt_is_scanning,_Bool,
 Function,+,furi_hal_bt_is_testing_supported,_Bool,
 Function,+,furi_hal_bt_lock_core2,void,
 Function,+,furi_hal_bt_nvm_sram_sem_acquire,void,
@@ -1416,10 +1417,12 @@ Function,+,furi_hal_bt_start_packet_rx,void,"uint8_t, uint8_t"
 Function,+,furi_hal_bt_start_packet_tx,void,"uint8_t, uint8_t, uint8_t"
 Function,+,furi_hal_bt_start_radio_stack,_Bool,
 Function,+,furi_hal_bt_start_rx,void,uint8_t
+Function,+,furi_hal_bt_start_scanning,void,"BleScanEventCallback, void*, _Bool"
 Function,+,furi_hal_bt_start_tone_tx,void,"uint8_t, uint8_t"
 Function,+,furi_hal_bt_stop_advertising,void,
 Function,+,furi_hal_bt_stop_packet_test,uint16_t,
 Function,+,furi_hal_bt_stop_rx,void,
+Function,+,furi_hal_bt_stop_scanning,void,
 Function,+,furi_hal_bt_stop_tone_tx,void,
 Function,+,furi_hal_bt_unlock_core2,void,
 Function,+,furi_hal_bt_update_battery_level,void,uint8_t
@@ -2072,8 +2075,11 @@ Function,-,gap_extra_beacon_start,_Bool,
 Function,-,gap_extra_beacon_stop,_Bool,
 Function,-,gap_get_state,GapState,
 Function,-,gap_init,_Bool,"GapConfig*, const GapRootSecurityKeys*, GapEventCallback, void*"
+Function,-,gap_is_scanning,_Bool,
 Function,-,gap_start_advertising,void,
+Function,-,gap_start_scanning,void,"BleScanEventCallback, void*, _Bool"
 Function,-,gap_stop_advertising,void,
+Function,-,gap_stop_scanning,void,
 Function,-,gap_thread_stop,void,
 Function,-,getc,int,FILE*
 Function,-,getc_unlocked,int,FILE*

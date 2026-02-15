@@ -40,6 +40,15 @@ typedef struct {
 
 typedef bool (*GapEventCallback)(GapEvent event, void* context);
 
+typedef void (*BleScanEventCallback)(
+    uint8_t event_type,
+    uint8_t address_type,
+    uint8_t mac_address[6],
+    int8_t rssi,
+    uint8_t size,
+    const uint8_t* data,
+    void* context);
+
 typedef enum {
     GapStateUninitialized,
     GapStateIdle,
@@ -97,6 +106,10 @@ bool gap_init(
     const GapRootSecurityKeys* root_keys,
     GapEventCallback on_event_cb,
     void* context);
+
+void gap_start_scanning(BleScanEventCallback callback, void* context, bool active);
+void gap_stop_scanning(void);
+bool gap_is_scanning(void);
 
 void gap_start_advertising(void);
 

@@ -252,6 +252,20 @@ bool furi_hal_bt_is_active(void) {
     return gap_get_state() > GapStateIdle;
 }
 
+void furi_hal_bt_start_scanning(BleScanEventCallback callback, void* context, bool active) {
+    if(furi_hal_bt.stack == FuriHalBtStackFull) {
+        gap_start_scanning(callback, context, active);
+    }
+}
+
+void furi_hal_bt_stop_scanning(void) {
+    gap_stop_scanning();
+}
+
+bool furi_hal_bt_is_scanning(void) {
+    return gap_is_scanning();
+}
+
 void furi_hal_bt_start_advertising(void) {
     if(gap_get_state() == GapStateIdle) {
         gap_start_advertising();

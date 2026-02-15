@@ -36,6 +36,9 @@ typedef struct {
     GapState state;
     FuriMutex* state_mutex;
     GapEventCallback on_event_cb;
+    BleScanEventCallback on_scan_cb;
+    bool is_scanning;
+    void* scan_context;
     void* context;
     FuriTimer* advertise_timer;
     FuriThread* thread;
@@ -148,6 +151,15 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
         GapEvent event = {.type = GapEventTypeDisconnected};
         gap->on_event_cb(event, gap->context);
     } break;
+    case HCI_COMMAND_COMPLETE_EVT_CODE:
+        aci_gap_proc_complete_event_rp0* command_complete_event =
+            (aci_gap_proc_complete_event_rp0*)event_pckt->data;
+        FURI_LOG_I(TAG, "Command complete event: %02X", command_complete_event->Procedure_Code);
+        FURI_LOG_I(TAG, "Command complete status: %02X", command_complete_event->Status);
+        if(command_complete_event->Procedure_Code == 0x02) {
+            gap->is_scanning = false;
+        }
+        break;
 
     case HCI_LE_META_EVT_CODE:
         meta_evt = (evt_le_meta_event*)event_pckt->data;
@@ -178,6 +190,25 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             } else {
                 FURI_LOG_I(TAG, "PHY Params TX = %d, RX = %d ", tx_phy, rx_phy);
             }
+            break;
+
+        case HCI_LE_ADVERTISING_REPORT_SUBEVT_CODE:
+            hci_le_advertising_report_event_rp0* event =
+                (hci_le_advertising_report_event_rp0*)meta_evt->data;
+            if(event->Num_Reports > 0) {
+                if(gap->on_scan_cb) {
+                    gap->on_scan_cb(
+                        event->Advertising_Report[0].Event_Type,
+                        event->Advertising_Report[0].Address_Type,
+                        event->Advertising_Report[0].Address,
+                        ((int8_t*)(&event->Advertising_Report[0]
+                                        .Data))[event->Advertising_Report[0].Length_Data],
+                        event->Advertising_Report[0].Length_Data,
+                        (uint8_t*)(&event->Advertising_Report[0].Data),
+                        gap->scan_context ? gap->scan_context : gap->context);
+                }
+            }
+
             break;
 
         case HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE: {
@@ -352,6 +383,9 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     aci_hal_write_config_data(CONFIG_DATA_IR_OFFSET, CONFIG_DATA_IR_LEN, root_keys->irk);
     // Set Encryption root key used to derive LTK and CSRK
     aci_hal_write_config_data(CONFIG_DATA_ER_OFFSET, CONFIG_DATA_ER_LEN, root_keys->erk);
+    uint8_t bg_scan_mode = 1;
+    aci_hal_write_config_data(
+        CONFIG_DATA_LL_BG_SCAN_MODE_OFFSET, CONFIG_DATA_LL_BG_SCAN_MODE_LEN, &bg_scan_mode);
     // Set TX Power to 0 dBm
     aci_hal_set_tx_power_level(1, 0x19);
     // Initialize GATT interface
@@ -359,9 +393,13 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     // Initialize GAP interface
     // Skip first symbol AD_TYPE_COMPLETE_LOCAL_NAME
     char* name = gap->service.adv_name + 1;
+    uint8_t role = GAP_PERIPHERAL_ROLE;
+    if(ble_glue_get_c2_info()->StackType == INFO_STACK_TYPE_BLE_FULL) {
+        FURI_LOG_I(TAG, "Stack type is BLE_FULL, adding central role");
+        role |= GAP_CENTRAL_ROLE | GAP_OBSERVER_ROLE;
+    }
     aci_gap_init(
-        GAP_PERIPHERAL_ROLE |
-            (ble_glue_get_c2_info()->StackType == INFO_STACK_TYPE_BLE_FULL ? GAP_CENTRAL_ROLE : 0),
+        role,
         0,
         strlen(name),
         &gap->service.gap_svc_handle,
@@ -505,6 +543,35 @@ static void gap_advertise_stop(void) {
     gap->on_event_cb(event, gap->context);
 }
 
+void gap_start_scanning(BleScanEventCallback callback, void* context, bool active) {
+    furi_check(furi_mutex_acquire(gap->state_mutex, FuriWaitForever) == FuriStatusOk);
+    FURI_LOG_I(TAG, "Start scanning");
+    gap->on_scan_cb = callback;
+    gap->scan_context = context;
+    if(!gap->is_scanning) {
+        aci_gap_terminate_gap_proc(GAP_OBSERVATION_PROC);
+    }
+    gap->is_scanning = true;
+    aci_gap_start_observation_proc(8, 8, active, 0, 0, 0);
+    furi_check(furi_mutex_release(gap->state_mutex) == FuriStatusOk);
+}
+
+void gap_stop_scanning(void) {
+    furi_check(furi_mutex_acquire(gap->state_mutex, FuriWaitForever) == FuriStatusOk);
+    FURI_LOG_I(TAG, "Stop scanning");
+    gap->on_scan_cb = NULL;
+    gap->scan_context = NULL;
+    if(gap->is_scanning) {
+        aci_gap_terminate_gap_proc(GAP_OBSERVATION_PROC);
+        gap->is_scanning = false;
+    }
+    furi_check(furi_mutex_release(gap->state_mutex) == FuriStatusOk);
+}
+
+bool gap_is_scanning(void) {
+    return gap->is_scanning;
+}
+
 void gap_start_advertising(void) {
     furi_check(furi_mutex_acquire(gap->state_mutex, FuriWaitForever) == FuriStatusOk);
     if(gap->state == GapStateIdle) {
@@ -558,6 +625,9 @@ bool gap_init(
     gap->state = GapStateIdle;
     gap->service.connection_handle = 0xFFFF;
     gap->enable_adv = true;
+    gap->is_scanning = false;
+    gap->scan_context = NULL;
+    gap->on_scan_cb = NULL;
 
     // Command queue allocation
     gap->command_queue = furi_message_queue_alloc(8, sizeof(GapCommand));
