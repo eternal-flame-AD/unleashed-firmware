@@ -458,6 +458,7 @@ static void bt_apply_settings(Bt* bt) {
         furi_hal_bt_start_advertising();
     } else {
         furi_hal_bt_stop_advertising();
+        furi_hal_bt_stop_scanning();
     }
 }
 

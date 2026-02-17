@@ -266,6 +266,10 @@ bool furi_hal_bt_is_scanning(void) {
     return gap_is_scanning();
 }
 
+void furi_hal_bt_terminate_connection(uint16_t connection_handle) {
+    gap_terminate_connection(connection_handle);
+}
+
 void furi_hal_bt_start_advertising(void) {
     if(gap_get_state() == GapStateIdle) {
         gap_start_advertising();

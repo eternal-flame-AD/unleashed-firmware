@@ -105,6 +105,26 @@ bool ble_gatt_service_add(
 
 bool ble_gatt_service_delete(uint16_t svc_handle);
 
+tBleStatus
+    ble_gatt_discover_services(uint16_t connection_handle, uint8_t uuid_len, const UUID_t* uuid);
+tBleStatus ble_gatt_discover_service_chars(
+    uint16_t connection_handle,
+    uint16_t start_handle,
+    uint16_t end_handle,
+    uint8_t uuid_len,
+    const UUID_t* uuid);
+tBleStatus ble_gatt_discover_char_descriptors(
+    uint16_t connection_handle,
+    uint16_t char_handle,
+    uint16_t end_handle);
+tBleStatus ble_gatt_read_char(uint16_t connection_handle, uint16_t char_handle);
+tBleStatus ble_gatt_write_char(
+    uint16_t connection_handle,
+    uint16_t char_handle,
+    uint8_t* data,
+    uint8_t data_len,
+    bool with_response);
+
 #ifdef __cplusplus
 }
 #endif

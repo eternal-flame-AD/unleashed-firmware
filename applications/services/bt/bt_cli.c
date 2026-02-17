@@ -22,7 +22,7 @@ static void bt_cli_command_hci_info(PipeSide* pipe, FuriString* args, void* cont
     furi_string_free(buffer);
 }
 
-static void bt_cli_command_scan_callback(
+static GapScanAction bt_cli_command_scan_callback(
     uint8_t event_type,
     uint8_t address_type,
     uint8_t mac_address[6],
@@ -125,6 +125,8 @@ static void bt_cli_command_scan_callback(
         cursor += chunk_size + 2;
     }
     pipe_send(pipe, "\r\n", 2);
+
+    return GapScanActionIgnore;
 }
 
 static void bt_cli_command_scan(PipeSide* pipe, FuriString* args, void* context) {

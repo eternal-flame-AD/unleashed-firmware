@@ -147,6 +147,12 @@ void furi_hal_bt_start_scanning(BleScanEventCallback callback, void* context, bo
  */
 void furi_hal_bt_stop_scanning(void);
 
+/** Terminate connection
+ *
+ * @param connection_handle Connection handle
+ */
+void furi_hal_bt_terminate_connection(uint16_t connection_handle);
+
 /** Start advertising
  */
 void furi_hal_bt_start_advertising(void);

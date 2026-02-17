@@ -169,3 +169,56 @@ bool ble_gatt_service_delete(uint16_t svc_handle) {
 
     return result == BLE_STATUS_SUCCESS;
 }
+
+tBleStatus
+    ble_gatt_discover_services(uint16_t connection_handle, uint8_t uuid_len, const UUID_t* uuid) {
+    switch(uuid_len) {
+    case 0:
+        return aci_gatt_disc_all_primary_services(connection_handle);
+    case 2:
+        return aci_gatt_disc_primary_service_by_uuid(connection_handle, 0x01, uuid);
+    case 16:
+        return aci_gatt_disc_primary_service_by_uuid(connection_handle, 0x02, uuid);
+    default:
+        return BLE_STATUS_INVALID_PARAMS;
+    }
+}
+
+tBleStatus ble_gatt_discover_service_chars(
+    uint16_t connection_handle,
+    uint16_t start_handle,
+    uint16_t end_handle,
+    uint8_t uuid_len,
+    const UUID_t* uuid) {
+    switch(uuid_len) {
+    case 0:
+        return aci_gatt_disc_all_char_of_service(connection_handle, start_handle, end_handle);
+    case 2:
+        return aci_gatt_disc_char_by_uuid(connection_handle, start_handle, end_handle, 0x01, uuid);
+    case 16:
+        return aci_gatt_disc_char_by_uuid(connection_handle, start_handle, end_handle, 0x02, uuid);
+    default:
+        return BLE_STATUS_INVALID_PARAMS;
+    }
+}
+
+tBleStatus ble_gatt_discover_char_descriptors(
+    uint16_t connection_handle,
+    uint16_t char_handle,
+    uint16_t end_handle) {
+    return aci_gatt_disc_all_char_desc(connection_handle, char_handle, end_handle);
+}
+
+tBleStatus ble_gatt_read_char(uint16_t connection_handle, uint16_t char_handle) {
+    return aci_gatt_read_char_value(connection_handle, char_handle);
+}
+
+tBleStatus ble_gatt_write_char(
+    uint16_t connection_handle,
+    uint16_t char_handle,
+    uint8_t* data,
+    uint8_t data_len,
+    bool with_response) {
+    return (with_response ? aci_gatt_write_char_value : aci_gatt_write_without_resp)(
+        connection_handle, char_handle, data_len, data);
+}

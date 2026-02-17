@@ -9,6 +9,7 @@
 #include <furi_hal.h>
 #include <furi.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #define TAG "BleGap"
 
@@ -139,17 +140,19 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             gap->state = GapStateIdle;
             FURI_LOG_I(
                 TAG, "Disconnect from client. Reason: %02X", disconnection_complete_event->Reason);
+            gap->is_secure = false;
+            gap->negotiation_round = 0;
+            // Enterprise sleep
+            furi_delay_us(666 + 666);
+            if(gap->enable_adv) {
+                // Restart advertising
+                gap_advertise_start(GapStateAdvFast);
+            }
+            GapEvent event = {.type = GapEventTypeDisconnected};
+            gap->on_event_cb(event, gap->context);
+        } else {
+            FURI_LOG_I(TAG, "Peripheral disconnect complete");
         }
-        gap->is_secure = false;
-        gap->negotiation_round = 0;
-        // Enterprise sleep
-        furi_delay_us(666 + 666);
-        if(gap->enable_adv) {
-            // Restart advertising
-            gap_advertise_start(GapStateAdvFast);
-        }
-        GapEvent event = {.type = GapEventTypeDisconnected};
-        gap->on_event_cb(event, gap->context);
     } break;
     case HCI_COMMAND_COMPLETE_EVT_CODE:
         aci_gap_proc_complete_event_rp0* command_complete_event =
@@ -167,11 +170,13 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
         case HCI_LE_CONNECTION_UPDATE_COMPLETE_SUBEVT_CODE: {
             hci_le_connection_update_complete_event_rp0* event =
                 (hci_le_connection_update_complete_event_rp0*)meta_evt->data;
-            gap->connection_params.conn_interval = event->Conn_Interval;
-            gap->connection_params.slave_latency = event->Conn_Latency;
-            gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
-            FURI_LOG_I(TAG, "Connection parameters event complete");
-            gap_verify_connection_parameters(gap);
+            if(event->Connection_Handle == gap->service.connection_handle) {
+                gap->connection_params.conn_interval = event->Conn_Interval;
+                gap->connection_params.slave_latency = event->Conn_Latency;
+                gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
+                FURI_LOG_I(TAG, "Connection parameters event complete");
+                gap_verify_connection_parameters(gap);
+            }
 
             break;
         }
@@ -184,7 +189,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             } else {
                 FURI_LOG_I(TAG, "Update PHY succeed");
             }
-            ret = hci_le_read_phy(gap->service.connection_handle, &tx_phy, &rx_phy);
+            ret = hci_le_read_phy(evt_le_phy_update_complete->Connection_Handle, &tx_phy, &rx_phy);
             if(ret) {
                 FURI_LOG_E(TAG, "Read PHY failed, status: %d", ret);
             } else {
@@ -192,12 +197,12 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             }
             break;
 
-        case HCI_LE_ADVERTISING_REPORT_SUBEVT_CODE:
+        case HCI_LE_ADVERTISING_REPORT_SUBEVT_CODE: {
             hci_le_advertising_report_event_rp0* event =
                 (hci_le_advertising_report_event_rp0*)meta_evt->data;
             if(event->Num_Reports > 0) {
                 if(gap->on_scan_cb) {
-                    gap->on_scan_cb(
+                    GapScanAction action = gap->on_scan_cb(
                         event->Advertising_Report[0].Event_Type,
                         event->Advertising_Report[0].Address_Type,
                         event->Advertising_Report[0].Address,
@@ -206,30 +211,51 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                         event->Advertising_Report[0].Length_Data,
                         (uint8_t*)(&event->Advertising_Report[0].Data),
                         gap->scan_context ? gap->scan_context : gap->context);
+                    if(action != GapScanActionIgnore) {
+                        aci_gap_terminate_gap_proc(GAP_OBSERVATION_PROC);
+                    }
+                    if(action == GapScanActionConnect) {
+                        aci_gap_create_connection(
+                            4,
+                            4,
+                            event->Advertising_Report[0].Address_Type,
+                            event->Advertising_Report[0].Address,
+                            0,
+                            80,
+                            240,
+                            0,
+                            500,
+                            160,
+                            320);
+                    }
                 }
             }
-
-            break;
+        } break;
 
         case HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE: {
             hci_le_connection_complete_event_rp0* event =
                 (hci_le_connection_complete_event_rp0*)meta_evt->data;
-            gap->connection_params.conn_interval = event->Conn_Interval;
-            gap->connection_params.slave_latency = event->Conn_Latency;
-            gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
+            if(event->Role == HCI_ROLE_PERIPHERAL) {
+                gap->connection_params.conn_interval = event->Conn_Interval;
+                gap->connection_params.slave_latency = event->Conn_Latency;
+                gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
 
-            // Stop advertising as connection completed
-            furi_timer_stop(gap->advertise_timer);
+                // Stop advertising as connection completed
+                furi_timer_stop(gap->advertise_timer);
 
-            // Update connection status and handle
-            gap->state = GapStateConnected;
-            gap->service.connection_handle = event->Connection_Handle;
+                // Update connection status and handle
+                gap->state = GapStateConnected;
+                gap->service.connection_handle = event->Connection_Handle;
 
-            gap_verify_connection_parameters(gap);
+                gap_verify_connection_parameters(gap);
 
-            if(gap->config->pairing_method != GapPairingNone) {
-                // Start pairing by sending security request
-                aci_gap_slave_security_req(event->Connection_Handle);
+                if(gap->config->pairing_method != GapPairingNone) {
+                    // Start pairing by sending security request
+                    aci_gap_slave_security_req(event->Connection_Handle);
+                }
+            } else {
+                FURI_LOG_W(TAG, "Unhandled master connection complete event");
+                aci_gap_terminate(event->Connection_Handle, 0x13);
             }
         } break;
 
@@ -303,18 +329,33 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
 
         case ACI_GAP_PAIRING_COMPLETE_VSEVT_CODE:
             pairing_complete = (aci_gap_pairing_complete_event_rp0*)blue_evt->data;
-            if(pairing_complete->Status) {
-                FURI_LOG_E(
-                    TAG,
-                    "Pairing failed with status: %d. Terminating connection",
-                    pairing_complete->Status);
-                aci_gap_terminate(gap->service.connection_handle, 5);
-            } else {
-                FURI_LOG_I(TAG, "Pairing complete");
-                GapEvent event = {.type = GapEventTypeConnected};
-                gap->on_event_cb(event, gap->context); //-V595
+            if(pairing_complete->Connection_Handle == gap->service.connection_handle) {
+                if(pairing_complete->Status) {
+                    FURI_LOG_E(
+                        TAG,
+                        "Pairing failed with status: %d. Terminating connection",
+                        pairing_complete->Status);
+                    aci_gap_terminate(gap->service.connection_handle, 5);
+                } else {
+                    FURI_LOG_I(TAG, "Pairing complete");
+                    GapEvent event = {.type = GapEventTypeConnected};
+                    gap->on_event_cb(event, gap->context); //-V595
+                }
             }
             break;
+
+        case ACI_GATT_NOTIFICATION_VSEVT_CODE:
+        case ACI_GATT_INDICATION_VSEVT_CODE: {
+            aci_gatt_notification_event_rp0* event =
+                (aci_gatt_notification_event_rp0*)blue_evt->data;
+            FURI_LOG_W(
+                TAG,
+                "Unhandled GATT client event conn 0x%04X attr 0x%04X (%" PRIu8 " bytes of data)",
+                event->Connection_Handle,
+                event->Attribute_Handle,
+                event->Attribute_Value_Length);
+            break;
+        }
 
         case ACI_L2CAP_CONNECTION_UPDATE_RESP_VSEVT_CODE:
             FURI_LOG_D(TAG, "Procedure complete event");
@@ -552,7 +593,7 @@ void gap_start_scanning(BleScanEventCallback callback, void* context, bool activ
         aci_gap_terminate_gap_proc(GAP_OBSERVATION_PROC);
     }
     gap->is_scanning = true;
-    aci_gap_start_observation_proc(8, 8, active, 0, 0, 0);
+    aci_gap_start_observation_proc(16, 16, active, 0, 0, 0);
     furi_check(furi_mutex_release(gap->state_mutex) == FuriStatusOk);
 }
 
@@ -570,6 +611,10 @@ void gap_stop_scanning(void) {
 
 bool gap_is_scanning(void) {
     return gap->is_scanning;
+}
+
+void gap_terminate_connection(uint16_t connection_handle) {
+    aci_gap_terminate(connection_handle, 0x13);
 }
 
 void gap_start_advertising(void) {

@@ -757,8 +757,13 @@ Function,+,ble_event_dispatcher_unregister_svc_handler,void,GapSvcEventHandler*
 Function,+,ble_gatt_characteristic_delete,void,"uint16_t, BleGattCharacteristicInstance*"
 Function,+,ble_gatt_characteristic_init,void,"uint16_t, const BleGattCharacteristicParams*, BleGattCharacteristicInstance*"
 Function,+,ble_gatt_characteristic_update,_Bool,"uint16_t, BleGattCharacteristicInstance*, const void*"
+Function,+,ble_gatt_discover_char_descriptors,tBleStatus,"uint16_t, uint16_t, uint16_t"
+Function,+,ble_gatt_discover_service_chars,tBleStatus,"uint16_t, uint16_t, uint16_t, uint8_t, const UUID_t*"
+Function,+,ble_gatt_discover_services,tBleStatus,"uint16_t, uint8_t, const UUID_t*"
+Function,+,ble_gatt_read_char,tBleStatus,"uint16_t, uint16_t"
 Function,+,ble_gatt_service_add,_Bool,"uint8_t, const Service_UUID_t*, uint8_t, uint8_t, uint16_t*"
 Function,+,ble_gatt_service_delete,_Bool,uint16_t
+Function,+,ble_gatt_write_char,tBleStatus,"uint16_t, uint16_t, uint8_t*, uint8_t, _Bool"
 Function,+,ble_glue_force_c2_mode,BleGlueCommandResult,BleGlueC2Mode
 Function,-,ble_glue_fus_get_status,BleGlueCommandResult,
 Function,-,ble_glue_fus_stack_delete,BleGlueCommandResult,
@@ -1424,6 +1429,7 @@ Function,+,furi_hal_bt_stop_packet_test,uint16_t,
 Function,+,furi_hal_bt_stop_rx,void,
 Function,+,furi_hal_bt_stop_scanning,void,
 Function,+,furi_hal_bt_stop_tone_tx,void,
+Function,+,furi_hal_bt_terminate_connection,void,uint16_t
 Function,+,furi_hal_bt_unlock_core2,void,
 Function,+,furi_hal_bt_update_battery_level,void,uint8_t
 Function,+,furi_hal_bt_update_power_state,void,_Bool
@@ -2080,6 +2086,7 @@ Function,-,gap_start_advertising,void,
 Function,-,gap_start_scanning,void,"BleScanEventCallback, void*, _Bool"
 Function,-,gap_stop_advertising,void,
 Function,-,gap_stop_scanning,void,
+Function,-,gap_terminate_connection,void,uint16_t
 Function,-,gap_thread_stop,void,
 Function,-,getc,int,FILE*
 Function,-,getc_unlocked,int,FILE*

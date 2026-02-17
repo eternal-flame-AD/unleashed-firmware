@@ -33,6 +33,12 @@ typedef union {
     uint16_t max_packet_size;
 } GapEventData;
 
+typedef enum {
+    GapScanActionIgnore = 0,
+    GapScanActionStop = 1,
+    GapScanActionConnect = 2,
+} GapScanAction;
+
 typedef struct {
     GapEventType type;
     GapEventData data;
@@ -40,7 +46,7 @@ typedef struct {
 
 typedef bool (*GapEventCallback)(GapEvent event, void* context);
 
-typedef void (*BleScanEventCallback)(
+typedef GapScanAction (*BleScanEventCallback)(
     uint8_t event_type,
     uint8_t address_type,
     uint8_t mac_address[6],
@@ -114,6 +120,8 @@ bool gap_is_scanning(void);
 void gap_start_advertising(void);
 
 void gap_stop_advertising(void);
+
+void gap_terminate_connection(uint16_t connection_handle);
 
 GapState gap_get_state(void);
 
