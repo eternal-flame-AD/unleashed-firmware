@@ -1,4 +1,5 @@
 #include "bt_settings_app.h"
+#include "profiles/serial_profile.h"
 
 static bool bt_settings_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);
@@ -78,7 +79,9 @@ void bt_settings_app_free(BtSettingsApp* app) {
 extern int32_t bt_settings_app(void* p) {
     UNUSED(p);
     BtSettingsApp* app = bt_settings_app_alloc();
+    ble_profile_serial_set_acl_permissive(true);
     view_dispatcher_run(app->view_dispatcher);
+    ble_profile_serial_set_acl_permissive(false);
     bt_settings_app_free(app);
     return 0;
 }

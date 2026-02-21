@@ -8,6 +8,10 @@
 #include <furi.h>
 #include <ble/core/ble_defs.h>
 
+#define TAG "BleProfileSerial"
+
+static bool acl_permissive = false;
+
 typedef struct {
     FuriHalBleProfileBase base;
 
@@ -47,21 +51,51 @@ static void ble_profile_serial_stop(FuriHalBleProfileBase* profile) {
 // Up to 45 ms
 #define CONNECTION_INTERVAL_MAX (0x24)
 
+void ble_profile_serial_set_acl_permissive(bool permissive) {
+    acl_permissive = permissive;
+}
+
+static bool
+    ble_profile_serial_acl_callback(uint8_t address_type, uint8_t mac_address[6], uint8_t flags) {
+    UNUSED(address_type);
+    UNUSED(mac_address);
+    FURI_LOG_I(
+        TAG,
+        "ACL callback: flags: 0x%02X address_type: %d MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+        flags,
+        address_type,
+        mac_address[5],
+        mac_address[4],
+        mac_address[3],
+        mac_address[2],
+        mac_address[1],
+        mac_address[0]);
+    if(flags & GAP_ACL_AUTHOR_Msk) {
+        // todo: implement a device whitelist
+        return false;
+    }
+    return acl_permissive || (flags & GAP_ACL_BONDED_Msk);
+}
+
 static const GapConfig serial_template_config = {
     .adv_service =
         {
             .UUID_Type = UUID_TYPE_16,
-            .Service_UUID_16 = 0x3080,
+            .Service_UUID_16 = 0x108F,
         },
     .appearance_char = 0x8600,
     .bonding_mode = true,
     .pairing_method = GapPairingPinCodeShow,
-    .conn_param = {
-        .conn_int_min = CONNECTION_INTERVAL_MIN,
-        .conn_int_max = CONNECTION_INTERVAL_MAX,
-        .slave_latency = 0,
-        .supervisor_timeout = 0,
-    }};
+    .conn_param =
+        {
+            .conn_int_min = CONNECTION_INTERVAL_MIN,
+            .conn_int_max = CONNECTION_INTERVAL_MAX,
+            .slave_latency = 0,
+            .supervisor_timeout = 0,
+        },
+    .acl_callback = ble_profile_serial_acl_callback,
+    .secure = true,
+};
 
 static void
     ble_profile_serial_get_config(GapConfig* config, FuriHalBleProfileParams profile_params) {
@@ -76,8 +110,6 @@ static void
         config->adv_name,
         furi_hal_version_get_ble_local_device_name_ptr(),
         FURI_HAL_VERSION_DEVICE_NAME_LENGTH);
-    config->adv_service.UUID_Type = UUID_TYPE_16;
-    config->adv_service.Service_UUID_16 |= furi_hal_version_get_hw_color();
 }
 
 static const FuriHalBleProfileTemplate profile_callbacks = {

@@ -23,6 +23,8 @@ typedef struct {
     uint16_t dev_name_char_handle;
     uint16_t appearance_char_handle;
     uint16_t connection_handle;
+    uint8_t peer_address_type;
+    uint8_t peer_address[6];
     uint8_t adv_svc_uuid_len;
     uint8_t adv_svc_uuid[20];
     uint8_t mfg_data_len;
@@ -240,14 +242,83 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                 gap->connection_params.slave_latency = event->Conn_Latency;
                 gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
 
+                if(gap->config->acl_callback) {
+                    uint8_t flags = 0;
+                    if(BLE_STATUS_SUCCESS ==
+                       aci_gap_is_device_bonded(
+                           event->Peer_Address_Type ? 1 : 0, event->Peer_Address)) {
+                        flags |= GAP_ACL_BONDED_Msk;
+                    }
+                    if(!gap->config->acl_callback(
+                           event->Peer_Address_Type, event->Peer_Address, flags)) {
+                        aci_gap_terminate(event->Connection_Handle, 0x05);
+                        return BleEventFlowEnable;
+                    }
+                }
+
                 // Stop advertising as connection completed
                 furi_timer_stop(gap->advertise_timer);
 
                 // Update connection status and handle
                 gap->state = GapStateConnected;
                 gap->service.connection_handle = event->Connection_Handle;
-
+                gap->service.peer_address_type = event->Peer_Address_Type;
+                memcpy(
+                    gap->service.peer_address,
+                    event->Peer_Address,
+                    sizeof(gap->service.peer_address));
                 gap_verify_connection_parameters(gap);
+
+                if(gap->config->secure) {
+                    aci_gap_set_authorization_requirement(gap->service.connection_handle, 1);
+                }
+
+                if(gap->config->pairing_method != GapPairingNone) {
+                    // Start pairing by sending security request
+                    aci_gap_slave_security_req(event->Connection_Handle);
+                }
+            } else {
+                FURI_LOG_W(TAG, "Unhandled master connection complete event");
+                aci_gap_terminate(event->Connection_Handle, 0x13);
+            }
+        } break;
+        case HCI_LE_ENHANCED_CONNECTION_COMPLETE_SUBEVT_CODE: {
+            hci_le_enhanced_connection_complete_event_rp0* event =
+                (hci_le_enhanced_connection_complete_event_rp0*)meta_evt->data;
+            if(event->Role == HCI_ROLE_PERIPHERAL) {
+                gap->connection_params.conn_interval = event->Conn_Interval;
+                gap->connection_params.slave_latency = event->Conn_Latency;
+                gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
+
+                if(gap->config->acl_callback) {
+                    uint8_t flags = 0;
+                    if(BLE_STATUS_SUCCESS ==
+                       aci_gap_is_device_bonded(event->Peer_Address_Type, event->Peer_Address)) {
+                        flags |= GAP_ACL_BONDED_Msk;
+                    }
+                    if(!gap->config->acl_callback(
+                           event->Peer_Address_Type, event->Peer_Address, flags)) {
+                        aci_gap_terminate(event->Connection_Handle, 0x05);
+                        return BleEventFlowEnable;
+                    }
+                }
+
+                // Stop advertising as connection completed
+                furi_timer_stop(gap->advertise_timer);
+
+                // Update connection status and handle
+                gap->state = GapStateConnected;
+                gap->service.connection_handle = event->Connection_Handle;
+                gap->service.peer_address_type = event->Peer_Address_Type;
+                memcpy(
+                    gap->service.peer_address,
+                    event->Peer_Address,
+                    sizeof(gap->service.peer_address));
+                gap_verify_connection_parameters(gap);
+
+                if(gap->config->secure) {
+                    aci_gap_set_authorization_requirement(gap->service.connection_handle, 1);
+                }
 
                 if(gap->config->pairing_method != GapPairingNone) {
                     // Start pairing by sending security request
@@ -295,9 +366,34 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             gap->on_event_cb(event, gap->context);
         } break;
 
-        case ACI_GAP_AUTHORIZATION_REQ_VSEVT_CODE:
-            FURI_LOG_D(TAG, "Authorization request event");
-            break;
+        case ACI_GAP_AUTHORIZATION_REQ_VSEVT_CODE: {
+            aci_gap_authorization_req_event_rp0* authorization_req =
+                (aci_gap_authorization_req_event_rp0*)blue_evt->data;
+            uint8_t authorized =
+                gap->config->secure ?
+                    2 :
+                    1; // default to reject if the profile requires higher security
+            // the firmware stack can only process authorization for peripheral role
+            if(authorization_req->Connection_Handle == gap->service.connection_handle &&
+               gap->config->acl_callback) {
+                uint8_t flags = GAP_ACL_AUTHOR_Msk;
+                if(BLE_STATUS_SUCCESS ==
+                   aci_gap_is_device_bonded(
+                       gap->service.peer_address_type ? 1 : 0, gap->service.peer_address)) {
+                    flags |= GAP_ACL_BONDED_Msk;
+                }
+                authorized =
+                    gap->config->acl_callback(
+                        gap->service.peer_address_type, gap->service.peer_address, flags) ?
+                        1 :
+                        2;
+                aci_gap_authorization_resp(authorization_req->Connection_Handle, authorized);
+                FURI_LOG_D(TAG, "Authorization request event");
+            } else {
+                aci_gap_authorization_resp(authorization_req->Connection_Handle, 2);
+                FURI_LOG_D(TAG, "Authorization request event from unhandled connection. Rejected");
+            }
+        } break;
 
         case ACI_GAP_SLAVE_SECURITY_INITIATED_VSEVT_CODE:
             FURI_LOG_D(TAG, "Slave security initiated");
@@ -327,7 +423,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             break;
         }
 
-        case ACI_GAP_PAIRING_COMPLETE_VSEVT_CODE:
+        case ACI_GAP_PAIRING_COMPLETE_VSEVT_CODE: {
             pairing_complete = (aci_gap_pairing_complete_event_rp0*)blue_evt->data;
             if(pairing_complete->Connection_Handle == gap->service.connection_handle) {
                 if(pairing_complete->Status) {
@@ -340,9 +436,15 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                     FURI_LOG_I(TAG, "Pairing complete");
                     GapEvent event = {.type = GapEventTypeConnected};
                     gap->on_event_cb(event, gap->context); //-V595
+                    List_Entry_t list_entry = {
+                        .Address_Type = gap->service.connection_handle,
+                    };
+                    memcpy(
+                        list_entry.Address, gap->service.peer_address, sizeof(list_entry.Address));
+                    aci_gap_add_devices_to_list(1, &list_entry, 4);
                 }
             }
-            break;
+        } break;
 
         case ACI_GATT_NOTIFICATION_VSEVT_CODE:
         case ACI_GATT_INDICATION_VSEVT_CODE: {
@@ -441,7 +543,7 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     }
     aci_gap_init(
         role,
-        0,
+        gap->config->secure ? PRIVACY_ENABLED : PRIVACY_DISABLED,
         strlen(name),
         &gap->service.gap_svc_handle,
         &gap->service.dev_name_char_handle,
@@ -464,7 +566,7 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
         gap->service.gap_svc_handle,
         gap->service.appearance_char_handle,
         0,
-        2,
+        gap->config->secure ? CFG_RPA_ADDRESS : CFG_IDENTITY_ADDRESS,
         gap_appearence_char_uuid);
     if(status) {
         FURI_LOG_E(TAG, "Failed updating appearence characteristic: %d", status);
@@ -492,7 +594,7 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     aci_gap_set_authentication_requirement(
         gap->config->bonding_mode,
         auth_req_mitm_mode,
-        CFG_SC_SUPPORT,
+        gap->config->secure ? CFG_SC_MANADATORY : CFG_SC_SUPPORT,
         keypress_supported,
         CFG_ENCRYPTION_KEY_SIZE_MIN,
         CFG_ENCRYPTION_KEY_SIZE_MAX,
@@ -540,7 +642,7 @@ static void gap_advertise_start(GapState new_state) {
         ADV_IND,
         min_interval,
         max_interval,
-        CFG_IDENTITY_ADDRESS,
+        2,
         0,
         strlen(gap->service.adv_name),
         (uint8_t*)gap->service.adv_name,
@@ -615,6 +717,12 @@ bool gap_is_scanning(void) {
 
 void gap_terminate_connection(uint16_t connection_handle) {
     aci_gap_terminate(connection_handle, 0x13);
+}
+
+void gap_get_bonded_devices(uint8_t* num_of_addresses, Bonded_Device_Entry_t* bonded_device_entry) {
+    uint8_t buffer_len = *num_of_addresses;
+    aci_gap_get_bonded_devices(num_of_addresses, bonded_device_entry);
+    furi_check(buffer_len >= *num_of_addresses, "Bond table overflow");
 }
 
 void gap_start_advertising(void) {

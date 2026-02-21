@@ -5,6 +5,7 @@
 #define CFG_TX_POWER (0x19) /* +0dBm */
 
 #define CFG_IDENTITY_ADDRESS GAP_PUBLIC_ADDR
+#define CFG_RPA_ADDRESS      GAP_RESOLVABLE_PRIVATE_ADDR
 
 /**
  * Define IO Authentication
@@ -20,7 +21,8 @@
 /**
  * Define Secure Connections Support
  */
-#define CFG_SC_SUPPORT SC_PAIRING_OPTIONAL
+#define CFG_SC_SUPPORT    SC_PAIRING_OPTIONAL
+#define CFG_SC_MANADATORY SC_PAIRING_ONLY
 
 /**
  * Define PHY

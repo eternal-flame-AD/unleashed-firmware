@@ -21,6 +21,12 @@ typedef SerialServiceEventCallback FuriHalBtSerialCallback;
 /** Serial profile descriptor */
 extern const FuriHalBleProfileTemplate* const ble_profile_serial;
 
+/** Set ACL permissive mode
+ *
+ * @param permissive    true if ACL is permissive, allows unbonded devices to connect
+ */
+void ble_profile_serial_set_acl_permissive(bool permissive);
+
 /** Send data through BLE
  *
  * @param profile       Profile instance

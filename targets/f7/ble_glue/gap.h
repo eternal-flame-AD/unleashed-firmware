@@ -5,8 +5,11 @@
 
 #include <furi_hal_version.h>
 
-#define GAP_MAC_ADDR_SIZE (6)
-#define GAP_KEY_SIZE      (0x10)
+#define GAP_MAC_ADDR_SIZE  (6)
+#define GAP_KEY_SIZE       (0x10)
+#define GAP_ACL_BONDED_Msk (1) // If the device is in bonded state
+#define GAP_ACL_AUTHOR_Msk \
+    (2) // Authorization required for performing sensitive ops (like BLE serial)
 
 /*
  * GAP helpers - background thread that handles BLE GAP events and advertising.
@@ -45,6 +48,8 @@ typedef struct {
 } GapEvent;
 
 typedef bool (*GapEventCallback)(GapEvent event, void* context);
+
+typedef bool (*GapAclCallback)(uint8_t address_type, uint8_t mac_address[6], uint8_t flags);
 
 typedef GapScanAction (*BleScanEventCallback)(
     uint8_t event_type,
@@ -93,11 +98,13 @@ typedef struct {
     uint8_t mfg_data[23];
     uint8_t mfg_data_len;
     uint16_t appearance_char;
-    bool bonding_mode;
     GapPairing pairing_method;
     uint8_t mac_address[GAP_MAC_ADDR_SIZE];
     char adv_name[FURI_HAL_VERSION_DEVICE_NAME_LENGTH];
     GapConnectionParamsRequest conn_param;
+    GapAclCallback acl_callback;
+    bool bonding_mode : 1;
+    bool secure       : 1;
 } GapConfig;
 
 typedef struct {
