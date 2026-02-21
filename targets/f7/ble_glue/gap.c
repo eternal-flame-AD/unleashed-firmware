@@ -642,7 +642,7 @@ static void gap_advertise_start(GapState new_state) {
         ADV_IND,
         min_interval,
         max_interval,
-        2,
+        gap->config->secure ? 2 : 0,
         0,
         strlen(gap->service.adv_name),
         (uint8_t*)gap->service.adv_name,
