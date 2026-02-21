@@ -1,5 +1,6 @@
 #include "gap.h"
 
+#include <mbedtls/sha256.h>
 #include "app_common.h"
 #include <interface/patterns/ble_thread/shci/shci.h>
 #include <core/mutex.h>
@@ -522,10 +523,18 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     srd_bd_addr[0] = LL_FLASH_GetUDN();
     aci_hal_write_config_data(
         CONFIG_DATA_RANDOM_ADDRESS_OFFSET, CONFIG_DATA_RANDOM_ADDRESS_LEN, (uint8_t*)srd_bd_addr);
+    uint8_t key_temp[32];
+    mbedtls_sha256_context sha256_ctx;
+    mbedtls_sha256_init(&sha256_ctx);
+    mbedtls_sha256_starts(&sha256_ctx, 0);
+    mbedtls_sha256_update(&sha256_ctx, (uint8_t*)srd_bd_addr, 4);
+    mbedtls_sha256_update(
+        &sha256_ctx, (uint8_t*)gap->config->mac_address, sizeof(gap->config->mac_address));
+    mbedtls_sha256_finish(&sha256_ctx, key_temp);
     // Set Identity root key used to derive LTK and CSRK
-    aci_hal_write_config_data(CONFIG_DATA_IR_OFFSET, CONFIG_DATA_IR_LEN, root_keys->irk);
+    aci_hal_write_config_data(CONFIG_DATA_IR_OFFSET, CONFIG_DATA_IR_LEN, key_temp);
     // Set Encryption root key used to derive LTK and CSRK
-    aci_hal_write_config_data(CONFIG_DATA_ER_OFFSET, CONFIG_DATA_ER_LEN, root_keys->erk);
+    aci_hal_write_config_data(CONFIG_DATA_ER_OFFSET, CONFIG_DATA_ER_LEN, key_temp + 16);
     uint8_t bg_scan_mode = 1;
     aci_hal_write_config_data(
         CONFIG_DATA_LL_BG_SCAN_MODE_OFFSET, CONFIG_DATA_LL_BG_SCAN_MODE_LEN, &bg_scan_mode);
