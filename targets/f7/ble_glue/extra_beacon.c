@@ -1,6 +1,7 @@
 #include "extra_beacon.h"
 #include "gap.h"
 
+#include <stm32_wpan_common.h>
 #include <ble/ble.h>
 #include <furi.h>
 

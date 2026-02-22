@@ -1,6 +1,6 @@
 #include "gatt.h"
+#include <stm32_wpan_common.h>
 #include <ble/ble.h>
-
 #include <furi.h>
 
 #define TAG "GattChar"

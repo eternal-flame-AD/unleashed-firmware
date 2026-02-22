@@ -48,7 +48,6 @@ typedef struct {
     FuriThread* thread;
     FuriMessageQueue* command_queue;
     bool enable_adv;
-    bool is_secure;
     uint8_t negotiation_round;
 } Gap;
 
@@ -64,7 +63,7 @@ static Gap* gap = NULL;
 static void gap_advertise_start(GapState new_state);
 static int32_t gap_app(void* context);
 
-static void gap_verify_connection_parameters(Gap* gap) {
+static void gap_verify_connection_parameters(Gap* gap, uint16_t conn_handle) {
     furi_check(gap);
 
     FURI_LOG_I(
@@ -88,7 +87,11 @@ static void gap_verify_connection_parameters(Gap* gap) {
     bool negotiation_failed = params->conn_int_min > gap->connection_params.conn_interval;
 
     // We don't care about upper bound till connection become secure
-    if(gap->is_secure) {
+    uint8_t security_mode;
+    uint8_t security_level = 0;
+    if(BLE_STATUS_SUCCESS !=
+           aci_gap_get_security_level(conn_handle, &security_mode, &security_level) ||
+       security_level > 1) {
         negotiation_failed |= connection_interval_max < gap->connection_params.conn_interval;
     }
 
@@ -113,8 +116,9 @@ static void gap_verify_connection_parameters(Gap* gap) {
     } else {
         FURI_LOG_I(
             TAG,
-            "Connection interval suits us. Spent %u rounds to negotiate",
-            gap->negotiation_round);
+            "Connection interval suits us. Spent %u rounds to negotiate (security level: %d)",
+            gap->negotiation_round,
+            security_level);
         // Looks like the other side is open to negotiation
         gap->negotiation_round = 0;
     }
@@ -143,7 +147,6 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             gap->state = GapStateIdle;
             FURI_LOG_I(
                 TAG, "Disconnect from client. Reason: %02X", disconnection_complete_event->Reason);
-            gap->is_secure = false;
             gap->negotiation_round = 0;
             // Enterprise sleep
             furi_delay_us(666 + 666);
@@ -166,6 +169,20 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
             gap->is_scanning = false;
         }
         break;
+    case HCI_READ_REMOTE_VERSION_INFORMATION_COMPLETE_EVT_CODE: {
+        hci_read_remote_version_information_complete_event_rp0* event =
+            (hci_read_remote_version_information_complete_event_rp0*)event_pckt->data;
+        if(event->Status) {
+            FURI_LOG_E(TAG, "Read remote version information failed, status: %02X", event->Status);
+        } else {
+            FURI_LOG_I(
+                TAG,
+                "Read remote version information complete event, Version: %02X, Manufacturer: %04X, Subversion: %04X",
+                event->Version,
+                event->Manufacturer_Name,
+                event->Subversion);
+        }
+    } break;
 
     case HCI_LE_META_EVT_CODE:
         meta_evt = (evt_le_meta_event*)event_pckt->data;
@@ -178,7 +195,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                 gap->connection_params.slave_latency = event->Conn_Latency;
                 gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
                 FURI_LOG_I(TAG, "Connection parameters event complete");
-                gap_verify_connection_parameters(gap);
+                gap_verify_connection_parameters(gap, event->Connection_Handle);
             }
 
             break;
@@ -243,22 +260,10 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                 gap->connection_params.slave_latency = event->Conn_Latency;
                 gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
 
-                if(gap->config->acl_callback) {
-                    uint8_t flags = 0;
-                    if(BLE_STATUS_SUCCESS ==
-                       aci_gap_is_device_bonded(
-                           event->Peer_Address_Type ? 1 : 0, event->Peer_Address)) {
-                        flags |= GAP_ACL_BONDED_Msk;
-                    }
-                    if(!gap->config->acl_callback(
-                           event->Peer_Address_Type, event->Peer_Address, flags)) {
-                        aci_gap_terminate(event->Connection_Handle, 0x05);
-                        return BleEventFlowEnable;
-                    }
-                }
-
                 // Stop advertising as connection completed
                 furi_timer_stop(gap->advertise_timer);
+
+                hci_read_remote_version_information(event->Connection_Handle);
 
                 // Update connection status and handle
                 gap->state = GapStateConnected;
@@ -268,7 +273,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                     gap->service.peer_address,
                     event->Peer_Address,
                     sizeof(gap->service.peer_address));
-                gap_verify_connection_parameters(gap);
+                gap_verify_connection_parameters(gap, event->Connection_Handle);
 
                 if(gap->config->secure) {
                     aci_gap_set_authorization_requirement(gap->service.connection_handle, 1);
@@ -291,22 +296,10 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                 gap->connection_params.slave_latency = event->Conn_Latency;
                 gap->connection_params.supervisor_timeout = event->Supervision_Timeout;
 
-                if(gap->config->acl_callback) {
-                    uint8_t flags = 0;
-                    if(BLE_STATUS_SUCCESS ==
-                       aci_gap_is_device_bonded(
-                           event->Peer_Address_Type ? 1 : 0, event->Peer_Address)) {
-                        flags |= GAP_ACL_BONDED_Msk;
-                    }
-                    if(!gap->config->acl_callback(
-                           event->Peer_Address_Type, event->Peer_Address, flags)) {
-                        aci_gap_terminate(event->Connection_Handle, 0x05);
-                        return BleEventFlowEnable;
-                    }
-                }
-
                 // Stop advertising as connection completed
                 furi_timer_stop(gap->advertise_timer);
+
+                hci_read_remote_version_information(event->Connection_Handle);
 
                 // Update connection status and handle
                 gap->state = GapStateConnected;
@@ -316,7 +309,7 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                     gap->service.peer_address,
                     event->Peer_Address,
                     sizeof(gap->service.peer_address));
-                gap_verify_connection_parameters(gap);
+                gap_verify_connection_parameters(gap, event->Connection_Handle);
 
                 if(gap->config->secure) {
                     aci_gap_set_authorization_requirement(gap->service.connection_handle, 1);
@@ -341,6 +334,25 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
         blue_evt = (evt_blecore_aci*)event_pckt->data;
         switch(blue_evt->ecode) {
             aci_gap_pairing_complete_event_rp0* pairing_complete;
+
+        case ACI_GAP_PAIRING_REQUEST_VSEVT_CODE: {
+            aci_gap_pairing_request_event_rp0* pairing_request =
+                (aci_gap_pairing_request_event_rp0*)blue_evt->data;
+            uint8_t accepted = 1;
+            if(gap->config->acl_callback) {
+                uint8_t flags = 0;
+                if(pairing_request->Bonded) {
+                    flags |= GAP_ACL_BONDED_Msk;
+                }
+                if(!gap->config->acl_callback(
+                       gap->service.peer_address_type, gap->service.peer_address, flags)) {
+                    accepted = 0;
+                }
+            }
+            aci_gap_pairing_request_reply(pairing_request->Connection_Handle, accepted);
+            FURI_LOG_I(TAG, "Pairing request event");
+            break;
+        }
 
         case ACI_GAP_LIMITED_DISCOVERABLE_VSEVT_CODE:
             FURI_LOG_I(TAG, "Limited discoverable event");
@@ -396,11 +408,6 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                 FURI_LOG_D(TAG, "Authorization request event from unhandled connection. Rejected");
             }
         } break;
-
-        case ACI_GAP_SLAVE_SECURITY_INITIATED_VSEVT_CODE:
-            FURI_LOG_D(TAG, "Slave security initiated");
-            gap->is_secure = true;
-            break;
 
         case ACI_GAP_BOND_LOST_VSEVT_CODE:
             FURI_LOG_D(TAG, "Bond lost event. Start rebonding");
@@ -546,6 +553,8 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     uint8_t bg_scan_mode = 1;
     aci_hal_write_config_data(
         CONFIG_DATA_LL_BG_SCAN_MODE_OFFSET, CONFIG_DATA_LL_BG_SCAN_MODE_LEN, &bg_scan_mode);
+    uint8_t smp_mode = 1 << 3;
+    aci_hal_write_config_data(CONFIG_DATA_SMP_MODE_OFFSET, CONFIG_DATA_SMP_MODE_LEN, &smp_mode);
     // Set TX Power to 0 dBm
     aci_hal_set_tx_power_level(1, 0x19);
     // Initialize GATT interface
@@ -627,7 +636,21 @@ static void gap_advertise_start(GapState new_state) {
     uint16_t min_interval;
     uint16_t max_interval;
 
-    FURI_LOG_D(TAG, "Start: %d", new_state);
+    uint8_t hci_version;
+    uint16_t hci_subversion;
+    uint8_t lmp_version;
+    uint16_t company_identifier;
+    uint16_t lmp_subversion;
+    hci_read_local_version_information(
+        &hci_version, &hci_subversion, &lmp_version, &company_identifier, &lmp_subversion);
+    FURI_LOG_D(
+        TAG,
+        "GAP start advertising: new state %d, HCI version: %02X.%04X, LMP version: %02X.%04X",
+        new_state,
+        hci_version,
+        hci_subversion,
+        lmp_version,
+        lmp_subversion);
 
     if(new_state == GapStateAdvFast) {
         min_interval = 0x80; // 80 ms
@@ -807,7 +830,6 @@ bool gap_init(
     furi_thread_start(gap->thread);
 
     // Set initial state
-    gap->is_secure = false;
     gap->negotiation_round = 0;
 
     if(gap->config->mfg_data_len > 0) {

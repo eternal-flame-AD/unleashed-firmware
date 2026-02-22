@@ -365,11 +365,13 @@ void furi_hal_bt_stop_tone_tx(void) {
 }
 
 void furi_hal_bt_start_packet_tx(uint8_t channel, uint8_t pattern, uint8_t datarate) {
-    hci_le_enhanced_transmitter_test(channel, 0x25, pattern, datarate);
+    UNUSED(datarate);
+    hci_le_transmitter_test(channel, 0x25, pattern);
 }
 
 void furi_hal_bt_start_packet_rx(uint8_t channel, uint8_t datarate) {
-    hci_le_enhanced_receiver_test(channel, datarate, 0);
+    UNUSED(datarate);
+    hci_le_receiver_test(channel);
 }
 
 uint16_t furi_hal_bt_stop_packet_test(void) {
