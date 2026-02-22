@@ -294,7 +294,8 @@ BleEventFlowStatus ble_event_app_notification(void* pckt) {
                 if(gap->config->acl_callback) {
                     uint8_t flags = 0;
                     if(BLE_STATUS_SUCCESS ==
-                       aci_gap_is_device_bonded(event->Peer_Address_Type, event->Peer_Address)) {
+                       aci_gap_is_device_bonded(
+                           event->Peer_Address_Type ? 1 : 0, event->Peer_Address)) {
                         flags |= GAP_ACL_BONDED_Msk;
                     }
                     if(!gap->config->acl_callback(
@@ -531,6 +532,13 @@ static void gap_init_svc(Gap* gap, const GapRootSecurityKeys* root_keys) {
     mbedtls_sha256_update(
         &sha256_ctx, (uint8_t*)gap->config->mac_address, sizeof(gap->config->mac_address));
     mbedtls_sha256_finish(&sha256_ctx, key_temp);
+    // mask keys with persistent secret
+    for(int i = 0; i < 16; i++) {
+        key_temp[i] = key_temp[i] ^ root_keys->irk[i];
+    }
+    for(int i = 0; i < 16; i++) {
+        key_temp[i + 16] = key_temp[i + 16] ^ root_keys->erk[i];
+    }
     // Set Identity root key used to derive LTK and CSRK
     aci_hal_write_config_data(CONFIG_DATA_IR_OFFSET, CONFIG_DATA_IR_LEN, key_temp);
     // Set Encryption root key used to derive LTK and CSRK
