@@ -11,7 +11,6 @@ typedef enum {
     DesktopSettingsAutoLockDelay,
     DesktopSettingsAutoPowerOff,
     DesktopSettingsBatteryDisplay,
-    DesktopSettingsClockDisplay,
     DesktopSettingsChangeName,
     DesktopSettingsHappyMode,
     DesktopSettingsFavoriteLeftShort,
